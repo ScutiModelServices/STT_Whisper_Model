@@ -90,6 +90,21 @@ def test_what_another_replica_saved_reaches_this_one(tmp_path):
     assert engine.num_thread == 5 and engine.vad_filter is True
 
 
+def test_model_dropped_by_a_saved_setting_loads_again_without_a_request(tmp_path):
+    store = TokenStore(tmp_path / "t.json")
+    config = settings.Config(store.settings_path, SETTINGS)
+    config.set({"update_check_hours": 0, "warm": True})
+    engine = make_engine()
+    with TestClient(create_app(engine, "admin", tokens=store, config=config)) as c:
+        settings.save(store.settings_path, num_thread=5)
+        for _ in range(300):
+            if engine.num_thread == 5 and len(engine.loads) == 2:
+                break
+            time.sleep(0.02)
+        assert len(engine.loads) == 2
+        assert c.get("/health").json()["ready"] is True
+
+
 def test_startup_warms_the_model():
     engine = make_engine()
     with TestClient(create_app(engine, warm=True)) as c:
