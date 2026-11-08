@@ -1,7 +1,7 @@
 # STT_Whisper_Model: Docker on a deployment machine
 
 Run Whisper on the CPU on a separate always-on machine (default `lex@scutiserver1.local`, folder
-`/media/ZimaOS-HD/Apps/STT_Whisper_Model`). Callers reach it over the published port.
+`/media/ZimaOS-HD/Apps/ModelServices/STT_Whisper_Model`). Callers reach it over the published port.
 
 ## Requirements on the machine
 
@@ -27,9 +27,9 @@ Keep your own target in the git-ignored `tools\deploy.local.ini` (copy `tools\de
 ## 2. First-time setup on the machine
 
 ```bash
-mkdir -p /media/ZimaOS-HD/Apps
-git clone -b live <your-repo-url> /media/ZimaOS-HD/Apps/STT_Whisper_Model
-cd /media/ZimaOS-HD/Apps/STT_Whisper_Model
+mkdir -p /media/ZimaOS-HD/Apps/ModelServices
+git clone -b live <your-repo-url> /media/ZimaOS-HD/Apps/ModelServices/STT_Whisper_Model
+cd /media/ZimaOS-HD/Apps/ModelServices/STT_Whisper_Model
 ```
 Create `.env` (deploy option 2 copies yours, or `cp .env.example .env` and edit):
 - `SERVICE_ADMIN_PASSWORD`: a real password.
@@ -71,7 +71,7 @@ The restart is needed because nginx resolves replica addresses once at start.
 ## Updating
 
 ```bash
-cd /media/ZimaOS-HD/Apps/STT_Whisper_Model
+cd /media/ZimaOS-HD/Apps/ModelServices/STT_Whisper_Model
 git pull
 docker compose up -d --build
 docker compose restart stt_whisper_model_lb
