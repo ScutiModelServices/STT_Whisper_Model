@@ -20,7 +20,7 @@ Run Whisper on the CPU in Docker Desktop on the machine you work on, so other pr
    ```bash
    docker compose up -d --build
    ```
-   The first start downloads about 150 MB of weights into the `stt_whisper_model_models` volume. `stt_whisper_model_lb` starts only after the service is healthy
+   The admin Download action downloads about 150 MB of weights into the `stt_whisper_model_models` volume. `stt_whisper_model_lb` starts only after the service is healthy
    (up to 300 s grace). Watch with `docker compose ps` and `docker compose logs -f stt_whisper_model`.
 3. Check:
    ```bash

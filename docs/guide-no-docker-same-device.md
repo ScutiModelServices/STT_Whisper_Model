@@ -9,7 +9,7 @@ Run Whisper on the CPU directly with Python: one process, no load balancer, list
 
 ## Start
 Double-click `run.bat`, or run it in a terminal from `STT_Whisper_Model\`. Choose **1 Run the service** in the menu, or run `run.bat run` to skip the menu. It runs `uv sync` to create or update `.venv`, then starts
-`python src/app.py`. The first start downloads about 150 MB of weights.
+`python src/app.py`. The admin Download action downloads about 150 MB of weights.
 
 Linux or macOS:
 ```bash
@@ -32,6 +32,8 @@ uv run python src/app.py
 
 PowerShell: `$env:SERVICE_ADMIN_PASSWORD = "secret"; .\run.bat`
 Bash: `SERVICE_ADMIN_PASSWORD=secret uv run python src/app.py`
+
+After starting, open `/admin/` → Updates → Download before inference. See [download steps and curl alternative](guide-web-ui.md#downloaded-weights). Startup never downloads weights.
 
 ## Check
 ```bash

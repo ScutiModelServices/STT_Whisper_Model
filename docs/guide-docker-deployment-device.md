@@ -44,7 +44,7 @@ docker compose up -d --build
 docker compose ps
 curl http://127.0.0.1:29300/health
 ```
-The first start downloads about 150 MB of weights into the `stt_whisper_model_models` volume; `stt_whisper_model_lb` waits for a healthy service
+The admin Download action downloads about 150 MB of weights into the `stt_whisper_model_models` volume; `stt_whisper_model_lb` waits for a healthy service
 (up to 300 s grace).
 
 ## 4. Connect callers

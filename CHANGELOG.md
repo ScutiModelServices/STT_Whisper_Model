@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Breaking: startup, warm-up and requests load downloaded weights only. First run requires `/admin/` → Updates → Download; missing weights keep health/admin available and inference returns 503. Checks never download; explicit Download replaces weights and tells every replica to reload.
+- Updates shows downloaded and online versions, newer-version and not-downloaded states; Download remains available when online comparison fails.
+
 - `SERVICE_MODELS_DIR` sets where a local (no Docker) run keeps downloaded model weights: `settings.apply_models_dir()` maps it to `HF_HOME` and `OLLAMA_MODELS` at start.
 - Docs: `docs/guide-cli.md`, a PowerShell-only way to test the service.
 

@@ -50,6 +50,8 @@ next call loads it again. Set the value to the physical core count.
 
 ## Run
 
+On first run, open `/admin/` → Updates → Download. Until weights are downloaded, `/health` reports `ready: false` and inference returns 503. Loading never downloads. See [download steps and curl alternative](docs/guide-web-ui.md#downloaded-weights).
+
 ```bash
 docker compose up -d --build        # http://<host>:29300
 ```

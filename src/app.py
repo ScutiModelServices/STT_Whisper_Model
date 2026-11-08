@@ -137,7 +137,7 @@ def create_app(client: WhisperEngine | None = None, admin_password: str | None =
         background: list[asyncio.Task] = []
         try:
             if config.get("warm") if config else warm:
-                # In the background: the first start downloads the weights, and /health must answer meanwhile.
+                # In the background: warm-up loads downloaded weights only, and /health must answer meanwhile.
                 background.append(asyncio.create_task(warm_up()))
             if config or check_hours > 0:
                 background.append(asyncio.create_task(check_forever()))
@@ -226,7 +226,7 @@ def create_app(client: WhisperEngine | None = None, admin_password: str | None =
                 else:
                     language = value["language"]
         except EngineError as error:
-            yield line({"type": "error", "status": 422 if error.status == 400 else 500, "message": str(error)})
+            yield line({"type": "error", "status": 422 if error.status == 400 else (error.status or 500), "message": str(error)})
             return
         except Exception:
             _log.exception("Whisper transcribe failed")
@@ -273,7 +273,7 @@ def create_app(client: WhisperEngine | None = None, admin_password: str | None =
                 return ndjson(live_lines(events, first, started, key, size, pcm), "miss")
             reply = await client.transcribe(*args)
         except EngineError as error:
-            raise HTTPException(422 if error.status == 400 else 500, str(error)) from None
+            raise HTTPException(422 if error.status == 400 else (error.status or 500), str(error)) from None
         except Exception:
             _log.exception("Whisper transcribe failed")
             raise HTTPException(500, "Whisper could not answer") from None

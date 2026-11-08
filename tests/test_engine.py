@@ -29,5 +29,5 @@ def test_load_uses_external_whisper_model_class_and_cached_weights(monkeypatch):
 
     assert isinstance(loaded, Loaded)
     assert isinstance(loaded.model, WhisperModel)
-    assert calls == [("cached-model", {"device": "cpu", "compute_type": "int8", "cpu_threads": 4})]
+    assert calls == [("cached-model", {"device": "cpu", "compute_type": "int8", "cpu_threads": 4, "local_files_only": True})]
     assert snapshots == [{"repo_id": "Systran/faster-whisper-base.en", "local_files_only": True, "token": False}]

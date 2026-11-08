@@ -3,6 +3,8 @@
 STT_Whisper_Model is one HTTP service (port 29300). It runs as `stt_whisper_model` replicas behind an nginx load balancer,
 `stt_whisper_model_lb`. Callers use `http://<host>:29300`; they never reach a replica directly.
 
+First run requires [Updates → Download](docs/guide-web-ui.md#downloaded-weights) after opening `/admin/`; health and admin stay available before weights are downloaded.
+
 ## Ways to run it
 
 Each path has its own guide. Pick one.
