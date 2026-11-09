@@ -25,7 +25,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from disconnect import CallerGone, Measure, first_piece
 from cache import AnswerCache
-from engine import DEFAULT_MODEL, PCM_BYTES_PER_SECOND, EngineError, WhisperEngine, default_marker
+import hardware
+import variants
+from engine import DEFAULT_MODEL, PCM_BYTES_PER_SECOND, EngineError, WhisperEngine, cuda_error, default_marker
 from options import SETTINGS
 import settings
 from tokens import LatencyHistogram, TokenStore
@@ -43,6 +45,10 @@ class TranscribeQuery(BaseModel):
     beam_size: int = Field(1, ge=1, le=10)
     word_timestamps: bool = True
     stream: bool = False  # true: the answer arrives as JSON lines, one per segment
+
+
+class VariantChoice(BaseModel):
+    id: str = Field(min_length=1, max_length=200)
 
 
 class SettingsUpdate(BaseModel):
@@ -76,7 +82,8 @@ def create_app(client: WhisperEngine | None = None, admin_password: str | None =
     `max_inflight` and `cache_size` and keeps them live; without it they stay fixed."""
     tokens = tokens or TokenStore(os.environ.get("SERVICE_TOKENS_FILE", "tokens.json"))
     client = client or WhisperEngine(config.get("model") if config else os.environ.get("SERVICE_MODEL", DEFAULT_MODEL),
-                                     compute_type=config.get("compute_type") if config else "int8", marker=default_marker())
+                                     compute_type=config.get("compute_type") if config else "int8",
+                                     device=config.get("device") if config else "cpu", marker=default_marker())
     inflight = 0
     cache = AnswerCache()
 
@@ -310,6 +317,35 @@ def create_app(client: WhisperEngine | None = None, admin_password: str | None =
 
         return {"replicas": number("SERVICE_REPLICAS"), "parallel": 1}
 
+    async def variant_rows() -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        """What this machine has, and every variant with its estimate and whether it fits. Read when asked, never cached."""
+        hw = await asyncio.to_thread(hardware.probe)
+        problem = await asyncio.to_thread(cuda_error) if hw["gpu"] else None
+        models = [m for m, _, _ in variants.MODELS]
+        rows = variants.listing(hw, (client.model, client.device, client.compute_type), problem, await client.downloaded(models))
+        return hw, rows
+
+    @app.get("/admin/variants", dependencies=[Depends(admin)])
+    async def list_variants() -> dict[str, Any]:
+        hw, rows = await variant_rows()
+        return {"hardware": hw, "summary": hardware.describe(hw), "variants": rows, "estimate": "Estimated from the model size and number format; not measured."}
+
+    @app.put("/admin/variant", dependencies=[Depends(admin)])
+    async def choose_variant(body: VariantChoice) -> dict[str, Any]:
+        """Saves the model, device and number format together. They are read at start, so a restart applies them."""
+        if config is None:
+            raise HTTPException(409, "Settings are fixed in this setup")
+        row = variants.find((await variant_rows())[1], body.id)
+        if row is None:
+            raise HTTPException(404, "No such variant.")
+        if row["fits"] is False:
+            raise HTTPException(409, row["reason"])
+        try:
+            config.set({"model": row["model"], "device": row["device"], "compute_type": row["compute_type"]})
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from None
+        return {"saved": row["id"], "restart_required": not row["current"], "downloaded": row["downloaded"]}
+
     @app.get("/admin/updates", dependencies=[Depends(admin)])
     async def update_status() -> dict[str, Any]:
         """Return the last check without I/O; zero check hours disables only the timer."""
@@ -395,7 +431,8 @@ def main() -> None:
 
     store = TokenStore(os.environ.get("SERVICE_TOKENS_FILE", "tokens.json"))
     config = settings.Config(store.settings_path, SETTINGS)
-    client = WhisperEngine(config.get("model"), compute_type=config.get("compute_type"), vad_filter=config.get("vad_filter"),
+    client = WhisperEngine(config.get("model"), compute_type=config.get("compute_type"), device=config.get("device"),
+                           vad_filter=config.get("vad_filter"),
                            marker=default_marker())
     saved = settings.load(store.settings_path)
     threads = saved.get("num_thread") or os.environ.get("SERVICE_NUM_THREAD", "").strip()

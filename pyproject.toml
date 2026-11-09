@@ -1,6 +1,6 @@
 [project]
 name = "stt_whisper_model"
-description = "One HTTP service that runs the Whisper speech-to-text model (faster-whisper) on the CPU for every project"
+description = "One HTTP service that runs the Whisper speech-to-text model (faster-whisper) on the CPU, or an NVIDIA GPU with the `gpu` extra, for every project"
 version = "0.1.0"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -11,6 +11,10 @@ dependencies = [
     "uvicorn>=0.30",
     "faster-whisper>=1.1",
 ]
+
+[project.optional-dependencies]
+# NVIDIA libraries CTranslate2 needs on a GPU (about 1.1 GB); `uv sync --extra gpu`. Not needed on a CPU.
+gpu = ["nvidia-cublas-cu12==12.6.4.1", "nvidia-cudnn-cu12>=9,<10"]
 
 [dependency-groups]
 dev = ["pytest>=8.0", "httpx>=0.27", "playwright>=1.40"]

@@ -53,6 +53,10 @@ Tokens live in `tokens.json` (`SERVICE_TOKENS_FILE`). In Docker that is the `stt
 survive `docker compose down` and rebuilds. Without Docker it is `tokens.json` in the folder the service starts from.
 Tokens are enforced only while `SERVICE_ADMIN_PASSWORD` is set.
 
+## Model variant
+
+The **Model variant** card lists every combination of model size (`tiny.en` to `large-v3`), number format and device (CPU or GPU). Each row shows the estimated memory it takes (calculated from the model size, not measured), the download size and whether the weights are already downloaded. The top line shows what this machine has: CPU cores, free memory and the NVIDIA GPU with its free memory. A variant that does not fit, or a GPU variant without the GPU libraries (`uv sync --extra gpu`), is greyed with the reason and cannot be chosen. **Use** saves the model, device and number format together; restart the service to apply them, then press Download on the Updates card if the weights are not downloaded. Free memory is read when you open the page and does not include what this service already holds, so the variant in use is always shown as fitting.
+
 ## CPU threads
 
 Use the synchronized slider or number field, then **Apply**. Both accept 1 to 256. Apply is disabled and

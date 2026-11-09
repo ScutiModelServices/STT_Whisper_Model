@@ -1,6 +1,6 @@
 # STT_Whisper_Model
 
-The one place Whisper speech-to-text is served: `faster-whisper` (CTranslate2) with `base.en` by default, on the CPU.
+The one place Whisper speech-to-text is served: `faster-whisper` (CTranslate2) with `base.en` by default, on the CPU, or on an NVIDIA GPU (`device` = `cuda`, needs `uv sync --extra gpu`).
 Projects send 16 kHz mono PCM over HTTP and get text, segments and word timestamps back. It has the same admin page,
 tokens, rate limits, metrics, settings and update checks as the other model services.
 
@@ -38,7 +38,7 @@ is kept. New weights empty the cache. The cache is per replica, so with N replic
 
 ## Admin page
 
-`/admin/` (password `SERVICE_ADMIN_PASSWORD`): tokens with rate limit and expiry, usage numbers, CPU threads, the
+`/admin/` (password `SERVICE_ADMIN_PASSWORD`): tokens with rate limit and expiry, usage numbers, the Model variant card (model size, number format and device, only what this machine can run, with estimated memory), CPU threads, the
 Settings card (update check hours, in-flight cap, answers kept, longest audio, silence filter, and the restart options
 model, number format, load at start), and the Updates card (**Check now** and **Download new weights** for the Hugging
 Face repository). New weights are downloaded once into the shared models volume; the other replicas notice within a few
