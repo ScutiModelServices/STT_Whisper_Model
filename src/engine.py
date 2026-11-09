@@ -63,16 +63,13 @@ class Loaded:
 
 
 def load(model: str, compute_type: str, threads: int) -> Loaded:
-    """Use the cached files when they are there (no network), otherwise download them."""
+    """Load downloaded files only; missing weights leave the service available for admin downloads."""
     from faster_whisper import WhisperModel
     from huggingface_hub import snapshot_download
 
     repo = repo_of(model)
-    try:
-        path = snapshot_download(repo_id=repo, local_files_only=True, token=False)
-    except Exception:
-        path = snapshot_download(repo_id=repo, token=False)
-    return Loaded(WhisperModel(path, device="cpu", compute_type=compute_type, cpu_threads=threads))
+    path = snapshot_download(repo_id=repo, local_files_only=True, token=False)
+    return Loaded(WhisperModel(path, device="cpu", compute_type=compute_type, cpu_threads=threads, local_files_only=True))
 
 
 def _remote_sha(repo: str) -> str:
@@ -98,7 +95,7 @@ def _download(repo: str) -> None:
 
 def default_marker() -> Path:
     """File in the shared models volume whose content changes when one replica downloads new weights."""
-    configured = os.environ.get("WHISPER_WEIGHTS_MARKER")
+    configured = os.environ.get("SERVICE_WEIGHTS_MARKER")
     return Path(configured) if configured else Path(os.environ.get("HF_HOME") or "~/.cache/huggingface").expanduser() / ".whisper-weights-version"
 
 
@@ -149,7 +146,10 @@ class WhisperEngine:
     def _base_model(self) -> Loaded:
         with self._load_lock:
             if self._base is None:
-                self._base = self._loader(self.model)
+                try:
+                    self._base = self._loader(self.model)
+                except OSError as error:
+                    raise EngineError("Model weights unavailable. Ask an admin to press Download on the Updates card.", 503) from error
             return self._base
 
     def _language(self, language: str) -> str | None:

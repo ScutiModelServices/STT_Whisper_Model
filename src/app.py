@@ -68,13 +68,13 @@ def create_app(client: WhisperEngine | None = None, admin_password: str | None =
                tokens: TokenStore | None = None, warm: bool = False,
                updates: Updates | None = None, check_hours: float = 0, max_inflight: int | None = None,
                cache_size: int | None = None, config: settings.Config | None = None) -> FastAPI:
-    """`admin_password` (WHISPER_ADMIN_PASSWORD) unlocks /admin/, where each project gets a token of its own; when it
+    """`admin_password` (SERVICE_ADMIN_PASSWORD) unlocks /admin/, where each project gets a token of its own; when it
     is set, every call except /health must send one of those tokens in the X-Internal-Token header. Unset = no
-    auth at all (local use only). `tokens` holds the project tokens (WHISPER_TOKENS_FILE). `cache_size` > 0 keeps that
-    many answers per replica (WHISPER_CACHE_SIZE). `config` (the admin page's settings) replaces `warm`, `check_hours`,
+    auth at all (local use only). `tokens` holds the project tokens (SERVICE_TOKENS_FILE). `cache_size` > 0 keeps that
+    many answers per replica (SERVICE_CACHE_SIZE). `config` (the admin page's settings) replaces `warm`, `check_hours`,
     `max_inflight` and `cache_size` and keeps them live; without it they stay fixed."""
-    tokens = tokens or TokenStore(os.environ.get("WHISPER_TOKENS_FILE", "tokens.json"))
-    client = client or WhisperEngine(config.get("model") if config else os.environ.get("WHISPER_MODEL", DEFAULT_MODEL),
+    tokens = tokens or TokenStore(os.environ.get("SERVICE_TOKENS_FILE", "tokens.json"))
+    client = client or WhisperEngine(config.get("model") if config else os.environ.get("SERVICE_MODEL", DEFAULT_MODEL),
                                      compute_type=config.get("compute_type") if config else "int8", marker=default_marker())
     inflight = 0
     cache = AnswerCache()
@@ -82,17 +82,17 @@ def create_app(client: WhisperEngine | None = None, admin_password: str | None =
     def cache_limit() -> int:
         """Answers this replica keeps; 0 = off."""
         return config.get("cache_size") if config else (
-            cache_size if cache_size is not None else int(os.environ.get("WHISPER_CACHE_SIZE") or 0))
+            cache_size if cache_size is not None else int(os.environ.get("SERVICE_CACHE_SIZE") or 0))
 
     def audio_limit() -> int:
         """Longest clip in bytes of PCM."""
-        seconds = config.get("max_seconds") if config else int(os.environ.get("WHISPER_MAX_SECONDS") or 150)
+        seconds = config.get("max_seconds") if config else int(os.environ.get("SERVICE_MAX_SECONDS") or 150)
         return seconds * PCM_BYTES_PER_SECOND
 
     def inflight_limit() -> int:
         """Calls this replica lets wait for the model at once; more get 429. 0 = 4."""
         value = config.get("max_inflight") if config else (
-            max_inflight if max_inflight is not None else int(os.environ.get("WHISPER_MAX_INFLIGHT") or 0))
+            max_inflight if max_inflight is not None else int(os.environ.get("SERVICE_MAX_INFLIGHT") or 0))
         return value or 4
 
     updates = updates or Updates(client.model, cached_sha=lambda: client.cached_sha(), remote_sha=lambda: client.remote_sha(),
@@ -124,9 +124,16 @@ def create_app(client: WhisperEngine | None = None, admin_password: str | None =
                 client.num_thread = int(saved["num_thread"])
             client.vad_filter = config.get("vad_filter")
             client.sync()
+            # A dropped model (download, threads change, sync) leaves /health "Starting" until a request loads it: reload once per drop.
+            if config.get("warm") and not client.ready and client.generation != warmed:
+                await warm_up()
             await asyncio.sleep(1)
 
+    warmed = 0  # generation of the last warm-up attempt
+
     async def warm_up() -> None:
+        nonlocal warmed
+        warmed = client.generation
         try:
             await client.warm()
         except Exception:
@@ -137,7 +144,7 @@ def create_app(client: WhisperEngine | None = None, admin_password: str | None =
         background: list[asyncio.Task] = []
         try:
             if config.get("warm") if config else warm:
-                # In the background: the first start downloads the weights, and /health must answer meanwhile.
+                # In the background: warm-up loads downloaded weights only, and /health must answer meanwhile.
                 background.append(asyncio.create_task(warm_up()))
             if config or check_hours > 0:
                 background.append(asyncio.create_task(check_forever()))
@@ -167,7 +174,7 @@ def create_app(client: WhisperEngine | None = None, admin_password: str | None =
 
     def admin(x_internal_token: str = Header("")) -> None:
         if not admin_password or not hmac.compare_digest(x_internal_token, admin_password):
-            raise HTTPException(401, "Admin password required (set WHISPER_ADMIN_PASSWORD)")
+            raise HTTPException(401, "Admin password required (set SERVICE_ADMIN_PASSWORD)")
 
     app = FastAPI(title="Whisper service", lifespan=lifespan)
 
@@ -226,7 +233,7 @@ def create_app(client: WhisperEngine | None = None, admin_password: str | None =
                 else:
                     language = value["language"]
         except EngineError as error:
-            yield line({"type": "error", "status": 422 if error.status == 400 else 500, "message": str(error)})
+            yield line({"type": "error", "status": 422 if error.status == 400 else (error.status or 500), "message": str(error)})
             return
         except Exception:
             _log.exception("Whisper transcribe failed")
@@ -273,7 +280,7 @@ def create_app(client: WhisperEngine | None = None, admin_password: str | None =
                 return ndjson(live_lines(events, first, started, key, size, pcm), "miss")
             reply = await client.transcribe(*args)
         except EngineError as error:
-            raise HTTPException(422 if error.status == 400 else 500, str(error)) from None
+            raise HTTPException(422 if error.status == 400 else (error.status or 500), str(error)) from None
         except Exception:
             _log.exception("Whisper transcribe failed")
             raise HTTPException(500, "Whisper could not answer") from None
@@ -285,7 +292,7 @@ def create_app(client: WhisperEngine | None = None, admin_password: str | None =
 
     @app.put("/admin/threads", dependencies=[Depends(admin)])
     def set_threads(body: Threads) -> dict[str, Any]:
-        """Applies to this replica now and is saved; the other replicas apply it within a few seconds. It beats WHISPER_NUM_THREAD."""
+        """Applies to this replica now and is saved; the other replicas apply it within a few seconds. It beats SERVICE_NUM_THREAD."""
         client.num_thread = body.num_thread
         settings.save(tokens.settings_path, num_thread=body.num_thread)
         return {"num_thread": client.num_thread}
@@ -297,7 +304,7 @@ def create_app(client: WhisperEngine | None = None, admin_password: str | None =
             value = os.environ.get(name, "").strip()
             return int(value) if value.isdigit() else None
 
-        return {"replicas": number("WHISPER_REPLICAS"), "parallel": 1}
+        return {"replicas": number("SERVICE_REPLICAS"), "parallel": 1}
 
     @app.get("/admin/updates", dependencies=[Depends(admin)])
     async def update_status() -> dict[str, Any]:
@@ -370,7 +377,7 @@ def create_app(client: WhisperEngine | None = None, admin_password: str | None =
             raise HTTPException(404, "No such token")
         return {"ok": True}
 
-    web = Path(os.environ.get("WHISPER_WEB_DIR", Path(__file__).resolve().parents[1] / "web"))
+    web = Path(os.environ.get("SERVICE_WEB_DIR", Path(__file__).resolve().parents[1] / "web"))
     if web.is_dir():
         app.mount("/admin", StaticFiles(directory=web, html=True))
 
@@ -378,19 +385,38 @@ def create_app(client: WhisperEngine | None = None, admin_password: str | None =
 
 
 def main() -> None:
+    import sys
+
     import uvicorn
 
-    store = TokenStore(os.environ.get("WHISPER_TOKENS_FILE", "tokens.json"))
+    if "--dotenv" in sys.argv[1:]:  # run.bat asks for it; a plain `python src/app.py` and Docker never read .env
+        env_file = Path(__file__).resolve().parents[1] / ".env"
+        if env_file.is_file():
+            names = settings.load_env_file(env_file)
+            print(f".env: loaded {', '.join(names) or 'no variables'} (names only; a real environment variable wins)", flush=True)
+        else:
+            print(".env: no file in the service folder", flush=True)
+    settings.apply_models_dir()  # SERVICE_MODELS_DIR -> HF_HOME / OLLAMA_MODELS
+
+    store = TokenStore(os.environ.get("SERVICE_TOKENS_FILE", "tokens.json"))
     config = settings.Config(store.settings_path, SETTINGS)
     client = WhisperEngine(config.get("model"), compute_type=config.get("compute_type"), vad_filter=config.get("vad_filter"),
                            marker=default_marker())
     saved = settings.load(store.settings_path)
-    threads = saved.get("num_thread") or os.environ.get("WHISPER_NUM_THREAD", "").strip()
+    threads = saved.get("num_thread") or os.environ.get("SERVICE_NUM_THREAD", "").strip()
     if threads:
         client.num_thread = int(threads)
-    app = create_app(client=client, admin_password=os.environ.get("WHISPER_ADMIN_PASSWORD") or None,
+    app = create_app(client=client, admin_password=os.environ.get("SERVICE_ADMIN_PASSWORD") or None,
                      tokens=store, config=config)
-    uvicorn.run(app, host=os.environ.get("WHISPER_HOST", "127.0.0.1"), port=int(os.environ.get("WHISPER_PORT", "9230")))
+    host, port = os.environ.get("SERVICE_HOST", "127.0.0.1"), int(os.environ.get("SERVICE_PORT", "29300"))
+
+    class Server(uvicorn.Server):
+        async def startup(self, sockets=None):
+            await super().startup(sockets)  # after uvicorn's own "running on" line
+            shown = "127.0.0.1" if host in ("0.0.0.0", "::") else host
+            print(f"INFO:     Admin page: http://{shown}:{port}/admin/", flush=True)
+
+    Server(uvicorn.Config(app, host=host, port=port)).run()
 
 
 if __name__ == "__main__":
