@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Admin UI: separate hash-routed pages in a collapsible sidebar; health-first Overview, one main-header page title, capability-specific navigation, draft-preserving navigation and responsive desktop/mobile layout. Existing admin and public API actions are preserved.
+
 - Admin page: the CPU threads card and tile are hidden when `CONFIG.tags` has `host-threads`, and the Project models card is shown only with `project-models`.
 - Admin page: a note under the CPU threads card says a change reloads the model (`CONFIG.threadNote`).
 
