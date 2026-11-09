@@ -56,8 +56,8 @@ On first run, open `/admin/` → Updates → Download. Until weights are downloa
 docker compose up -d --build        # http://<host>:29300
 ```
 
-Without Docker: `run.bat` (uv, listens on `127.0.0.1:29300`). The first transcription downloads the model (about 150 MB
-for `base.en`). See `deployment.md`.
+Without Docker: `run.bat` (uv, listens on `127.0.0.1:29300`). Open `/admin/` → Updates → Download once to install the model (about 150 MB
+for `base.en`); transcription never downloads it. See `deployment.md`.
 
 Example (needs `ffmpeg`):
 

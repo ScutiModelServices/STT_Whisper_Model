@@ -89,8 +89,10 @@ def _cached_sha(repo: str) -> str | None:
 
 def _download(repo: str) -> None:
     from huggingface_hub import snapshot_download
+    from progress import hub_blobs, hub_total, tracking
 
-    snapshot_download(repo_id=repo, token=False)
+    with tracking(repo, hub_total(repo, None), hub_blobs(repo)):
+        snapshot_download(repo_id=repo, token=False)
 
 
 def default_marker() -> Path:
