@@ -1,10 +1,12 @@
 """The Whisper variants an admin can choose: model size x number format x device, each with an estimate of what it takes,
 and whether this machine can run it.
 
-The estimates are arithmetic, not measurements. They were compared once with real use on the RTX 4050 Laptop
-(2026-11-09, `base.en` only, 10 s of audio): GPU memory +251 MB `float16` and +219 MB `int8_float16`, process memory +148 MB
-`int8` and +340 MB `float32` (the estimates were 2 to 2.5 times higher, so the overheads were lowered). Larger models were not
-measured and may need more than the 1.2 factor says, so treat the figures as an upper guide, not a promise.
+The estimates are arithmetic, not measurements. They were compared with real use on the RTX 4050 Laptop (2026-11-09,
+10 s of generated noise as audio; GPU memory from `nvidia-smi`, process memory from the working set), after the first
+overheads proved 2 to 2.5 times too high. Measured / estimated, in MB:
+`small.en` GPU `float16` 660 / 836, `int8_float16` 447 / 543, CPU `int8` 317 / 443;
+`medium.en` GPU `float16` 1979 / 2096, `int8_float16` 1109 / 1173, CPU `int8` 820 / 1073; `base.en` GPU `float16` 251 / 428.
+Every estimate is at or above the measured use. `large` models and long audio were not measured.
 
 The estimates are arithmetic: the weights at the format's bytes per parameter, times 1.2 for
 activations, plus a fixed overhead (the runtime on CPU, the CUDA context on GPU). They say "about this much" and are
