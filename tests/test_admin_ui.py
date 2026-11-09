@@ -119,7 +119,7 @@ def test_token_can_be_edited_and_shows_rate_and_expiry(page):
     page.fill("#admin", PASSWORD)
     page.click("#signin-button")
     sync_api.expect(page.locator("#dashboard")).to_be_visible()
-    sync_api.expect(page.locator("#project-models-empty")).to_be_visible()
+    sync_api.expect(page.locator("#project-models-card")).to_be_hidden()  # no project-models tag
     page.fill("#name", "Garrison")
     page.fill("#rate", "5")
     page.fill("#expires", "30")
@@ -147,6 +147,13 @@ def test_settings_can_be_saved_and_reset(page):
     sync_api.expect(page.locator("#setting-max_inflight")).to_have_value("3")
     page.get_by_role("button", name="Reset Calls allowed to wait for the model").click()
     sync_api.expect(page.locator("#setting-max_inflight")).to_have_value("0")
+
+
+def test_thread_note_warns_about_the_reload(page):
+    page.fill("#admin", PASSWORD)
+    page.click("#signin-button")
+    sync_api.expect(page.locator("#threads-card")).to_be_visible()
+    sync_api.expect(page.locator("#thread-note")).to_contain_text("reloads the model")
 
 
 def _open_playground(page):

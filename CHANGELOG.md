@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Admin page: the CPU threads card and tile are hidden when `CONFIG.tags` has `host-threads`, and the Project models card is shown only with `project-models`.
+- Admin page: a note under the CPU threads card says a change reloads the model (`CONFIG.threadNote`).
+
 - Admin page: `CONFIG.tags` (same tags as `docs/purpose.md`) switch tag-driven notes: `gpu` shows a CPU-threads note, `license-restricted` shows a licence note on the Updates card.
 
 - Breaking: startup, warm-up and requests load downloaded weights only. First run requires `/admin/` → Updates → Download; missing weights keep health/admin available and inference returns 503. Checks never download; explicit Download replaces weights and tells every replica to reload.
