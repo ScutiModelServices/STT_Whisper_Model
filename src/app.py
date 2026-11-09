@@ -23,6 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field
 
+from disconnect import CallerGone, Measure, first_piece
 from cache import AnswerCache
 from engine import DEFAULT_MODEL, PCM_BYTES_PER_SECOND, EngineError, WhisperEngine, default_marker
 from options import SETTINGS
@@ -273,7 +274,10 @@ def create_app(client: WhisperEngine | None = None, admin_password: str | None =
             if query.stream:
                 events = client.transcribe_stream(*args)
                 try:
-                    first = await anext(events, None)  # the first segment is waited for here, so a refusal is still an HTTP error
+                    first = await first_piece(request, events, None)  # the first segment is waited for here, so a refusal is still an HTTP error
+                except CallerGone:
+                    await events.aclose()
+                    return Response(status_code=499)  # nobody is listening; the generation is already stopped
                 except BaseException:
                     await events.aclose()
                     raise
@@ -355,16 +359,8 @@ def create_app(client: WhisperEngine | None = None, admin_password: str | None =
 
     latency = LatencyHistogram()
 
-    @app.middleware("http")
-    async def measure(request: Request, call_next):
-        started = time.perf_counter()
-        response = await call_next(request)
-        if request.url.path.startswith("/v1/"):
-            latency.observe(time.perf_counter() - started)
-        token_id = getattr(request.state, "token_id", None)
-        if token_id:
-            await run_in_threadpool(tokens.record, token_id, (time.perf_counter() - started) * 1000, response.status_code >= 500)
-        return response
+    app.add_middleware(Measure, observe=latency.observe,
+                       record=lambda token_id, ms, failed: run_in_threadpool(tokens.record, token_id, ms, failed))
 
     @app.get("/metrics", dependencies=[Depends(admin)])
     def metrics() -> PlainTextResponse:
