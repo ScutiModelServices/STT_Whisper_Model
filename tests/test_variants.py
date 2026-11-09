@@ -27,7 +27,7 @@ def by_id(rows_, variant_id):
 
 def test_estimate_scales_with_the_number_format():
     assert variants.estimate_mb(244, "int8", "cpu") < variants.estimate_mb(244, "float32", "cpu")
-    assert variants.estimate_mb(244, "float16", "cuda") == round(244 * 2 * 1.2 + 450)
+    assert variants.estimate_mb(244, "float16", "cuda") == round(244 * 2 * 1.2 + 250)
 
 
 def test_a_cpu_variant_that_needs_more_than_free_memory_does_not_fit():

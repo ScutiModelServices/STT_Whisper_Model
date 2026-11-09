@@ -1,7 +1,12 @@
 """The Whisper variants an admin can choose: model size x number format x device, each with an estimate of what it takes,
 and whether this machine can run it.
 
-The estimates are arithmetic, not measurements: the weights at the format's bytes per parameter, times 1.2 for
+The estimates are arithmetic, not measurements. They were compared once with real use on the RTX 4050 Laptop
+(2026-11-09, `base.en` only, 10 s of audio): GPU memory +251 MB `float16` and +219 MB `int8_float16`, process memory +148 MB
+`int8` and +340 MB `float32` (the estimates were 2 to 2.5 times higher, so the overheads were lowered). Larger models were not
+measured and may need more than the 1.2 factor says, so treat the figures as an upper guide, not a promise.
+
+The estimates are arithmetic: the weights at the format's bytes per parameter, times 1.2 for
 activations, plus a fixed overhead (the runtime on CPU, the CUDA context on GPU). They say "about this much" and are
 shown as estimates on the admin page. The disk size is the real size of the Hub files (CTranslate2 float16).
 
@@ -22,7 +27,7 @@ MODELS = (
 )
 FORMATS = {"cpu": ("int8", "float32"), "cuda": ("int8_float16", "float16")}
 BYTES_PER_PARAMETER = {"int8": 1, "int8_float16": 1, "float16": 2, "float32": 4}
-OVERHEAD_MB = {"cpu": 250, "cuda": 450}
+OVERHEAD_MB = {"cpu": 150, "cuda": 250}
 FREE_SHARE = {"cpu": 0.85, "cuda": 0.9}  # keep some memory for the rest of the machine
 
 
