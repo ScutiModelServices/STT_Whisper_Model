@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Playground: no token to paste
+
+The Try it panel signs in with a temporary public token made from the admin session (named `playground (temporary)`, valid 1 day, revoked on sign-out or when the tab closes), so the service token field is hidden and choices such as voices load by themselves. The token shows in the tokens list while it lives.
+
+
 - Variant memory estimates: lowered the fixed overheads (CPU 250 to 150 MB, GPU 450 to 250 MB) after measuring `base.en` on the GPU and CPU (the first estimates were 2 to 2.5 times the measured use). Larger models were not measured.
 - Model variants and GPU: new `device` setting (`cpu` or `cuda`) and the GPU number formats `float16` and `int8_float16`. A new **Model variant** card on the admin page lists model size x number format x device (`tiny.en` to `large-v3`, with `large-v3-turbo`), each with an estimate of the memory it takes (arithmetic, not measured), its download size and whether it is already downloaded, and offers only what this machine can run: free memory and the NVIDIA GPU are read when the page opens (`src/hardware.py`). `GET /admin/variants` lists them and `PUT /admin/variant` saves model, device and format together (409 when the variant does not fit, nothing saved); a restart applies it. The GPU libraries (cuBLAS 12, cuDNN 9, about 1.1 GB) are the optional `gpu` extra: `uv sync --extra gpu`. Without them a GPU variant shows why it cannot be chosen, and `device=cuda` fails loading with a 503 hint. The shared `web/index.html` gained the card (tag `variants`).
 
