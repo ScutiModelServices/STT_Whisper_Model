@@ -7,6 +7,7 @@ name: stt_whisper_model
 
 services:
   stt_whisper_model:
+    extra_hosts: ["host.docker.internal:host-gateway"]  # reaches services published on the host
     build: .
     image: stt_whisper_model:latest
     restart: unless-stopped
