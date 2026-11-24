@@ -1,6 +1,6 @@
 """The options the admin page can change. Each can still start from its environment variable; a saved value wins."""
 
-from engine import COMPUTE_TYPES, DEFAULT_MODEL
+from engine import COMPUTE_TYPES, DEFAULT_MODEL, DEVICES
 from settings import Setting
 
 SETTINGS = [
@@ -17,6 +17,8 @@ SETTINGS = [
     Setting("model", "Base model", "text", DEFAULT_MODEL, "SERVICE_MODEL", restart=True, blank=False,
             help="A faster-whisper name such as base.en or small.en, or a Hugging Face repository of CTranslate2 files. After a restart, download it from the Updates card"),
     Setting("compute_type", "Number format", "text", "int8", "SERVICE_COMPUTE_TYPE", restart=True, blank=False,
-            help=f"One of {', '.join(COMPUTE_TYPES)}. int8 is the fastest on a CPU; float32 uses about four times the memory"),
+            help=f"One of {', '.join(COMPUTE_TYPES)}. int8 is the fastest on a CPU; float32 uses about four times the memory. float16 and int8_float16 are for a GPU"),
+    Setting("device", "Device", "text", "cpu", "SERVICE_DEVICE", restart=True, blank=False,
+            help=f"One of {', '.join(DEVICES)}. cuda needs an NVIDIA GPU and the GPU libraries (uv sync --extra gpu). Use the Model variant card, which only offers what this machine can run"),
     Setting("warm", "Load the model at start", "bool", True, "SERVICE_WARM", restart=True),
 ]

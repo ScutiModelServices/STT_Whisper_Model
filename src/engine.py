@@ -1,4 +1,4 @@
-"""faster-whisper (CTranslate2, int8) run in this process on the CPU: 16 kHz mono s16le PCM in, text and timestamps out.
+"""faster-whisper (CTranslate2) run in this process, on the CPU or an NVIDIA GPU (`device`): 16 kHz mono s16le PCM in, text and timestamps out.
 
 Decoding is deterministic (no sampling, `beam_size` default 1), so every request can be kept in the answer cache.
 One transcription runs at a time per replica (CTranslate2 already uses every core); scale with replicas.
@@ -17,7 +17,8 @@ from pathlib import Path
 from typing import Any, AsyncIterator, Callable, Iterator
 
 DEFAULT_MODEL = "base.en"
-COMPUTE_TYPES = ("int8", "int8_float32", "float32")
+COMPUTE_TYPES = ("int8", "int8_float32", "float32", "int8_float16", "float16")
+DEVICES = ("cpu", "cuda")
 PCM_BYTES_PER_SECOND = 16000 * 2  # 16 kHz, mono, 16-bit
 
 _log = logging.getLogger(__name__)
@@ -62,14 +63,66 @@ class Loaded:
         yield "done", {"language": info.language}
 
 
-def load(model: str, compute_type: str, threads: int) -> Loaded:
+_cuda_checked: list[str | None] = []  # one entry once looked at: the problem text, or None when the libraries load
+
+
+def cuda_error() -> str | None:
+    """Why the GPU cannot be used (no CUDA device, or the cuBLAS and cuDNN libraries cannot be loaded), or None when it can.
+    The libraries come from the `gpu` extra (`uv sync --extra gpu`: the nvidia-cublas-cu12 and nvidia-cudnn-cu12 wheels);
+    their folder is added to the loader's search path here, because CTranslate2 looks the DLLs up by name.
+
+    shortcut: the Linux/Docker preload (`ctypes` with RTLD_GLOBAL) has not been run on Linux."""
+    if _cuda_checked:
+        return _cuda_checked[0]
+    problem: str | None = None
+    try:
+        import ctypes
+        import ctranslate2
+
+        if ctranslate2.get_cuda_device_count() < 1:
+            problem = "CTranslate2 sees no CUDA device."
+        else:
+            import importlib.util
+
+            for package in ("nvidia.cublas", "nvidia.cudnn"):
+                try:
+                    spec = importlib.util.find_spec(package)
+                except ModuleNotFoundError:  # the `nvidia` package itself is not installed
+                    spec = None
+                for root in (spec.submodule_search_locations or []) if spec else []:
+                    for sub in ("bin", "lib"):
+                        folder = Path(root) / sub
+                        if folder.is_dir():
+                            if os.name == "nt":
+                                os.add_dll_directory(str(folder))
+                                os.environ["PATH"] = f"{folder}{os.pathsep}{os.environ['PATH']}"
+                            else:
+                                for library in sorted(folder.glob("lib*.so*")):
+                                    ctypes.CDLL(str(library), mode=ctypes.RTLD_GLOBAL)
+            names = ("cublas64_12.dll", "cudnn64_9.dll") if os.name == "nt" else ("libcublas.so.12", "libcudnn.so.9")
+            for name in names:
+                try:
+                    ctypes.CDLL(name)
+                except OSError:
+                    problem = f"The CUDA library {name} is missing. Install the GPU libraries with `uv sync --extra gpu`."
+                    break
+    except Exception:  # an unusable GPU stack must never stop the service from starting
+        _log.exception("CUDA check failed")
+        problem = "The GPU libraries could not be checked."
+    _cuda_checked.append(problem)
+    return problem
+
+
+def load(model: str, compute_type: str, threads: int, device: str = "cpu") -> Loaded:
     """Load downloaded files only; missing weights leave the service available for admin downloads."""
     from faster_whisper import WhisperModel
     from huggingface_hub import snapshot_download
 
     repo = repo_of(model)
     path = snapshot_download(repo_id=repo, local_files_only=True, token=False)
-    return Loaded(WhisperModel(path, device="cpu", compute_type=compute_type, cpu_threads=threads, local_files_only=True))
+    if device == "cuda" and (problem := cuda_error()):
+        raise EngineError(problem, 503)
+    return Loaded(WhisperModel(path, device=device, compute_type=compute_type, cpu_threads=threads, local_files_only=True))
 
 
 def _remote_sha(repo: str) -> str:
@@ -105,19 +158,22 @@ class WhisperEngine:
     """The `loader`, `remote_sha`, `cached_sha` and `download` callables are injectable for tests. `loader(model)`
     returns an object with `stream(pcm, language, beam_size, words, vad, stop)`."""
 
-    def __init__(self, model: str = DEFAULT_MODEL, *, compute_type: str = "int8", vad_filter: bool = False,
+    def __init__(self, model: str = DEFAULT_MODEL, *, compute_type: str = "int8", device: str = "cpu", vad_filter: bool = False,
                  marker: Path | None = None, loader: Callable[[str], Loaded] | None = None,
                  remote_sha: Callable[[str], str] = _remote_sha, cached_sha: Callable[[str], str | None] = _cached_sha,
                  download: Callable[[str], None] = _download) -> None:
         if compute_type not in COMPUTE_TYPES:
             raise ValueError(f"compute_type must be one of {', '.join(COMPUTE_TYPES)}, not {compute_type!r}")
+        if device not in DEVICES:
+            raise ValueError(f"device must be one of {', '.join(DEVICES)}, not {device!r}")
         self.model = model
         self.compute_type = compute_type
+        self.device = device
         self.vad_filter = vad_filter
         self._threads: int | None = None
         self._marker = marker
         self._seen = self._read_marker()
-        self._loader = loader or (lambda name: load(name, self.compute_type, self._threads or 0))
+        self._loader = loader or (lambda name: load(name, self.compute_type, self._threads or 0, self.device))
         self._remote_sha_of, self._cached_sha_of, self._download_of = remote_sha, cached_sha, download
         self._base: Loaded | None = None
         self._load_lock = threading.Lock()
@@ -204,6 +260,11 @@ class WhisperEngine:
 
     async def cached_sha(self) -> str | None:
         return await asyncio.to_thread(self._cached_sha_of, repo_of(self.model))
+
+    async def downloaded(self, models: list[str]) -> set[str]:
+        """The models, among `models`, whose weights are on disk."""
+        found = await asyncio.gather(*(asyncio.to_thread(self._cached_sha_of, repo_of(m)) for m in models))
+        return {m for m, sha in zip(models, found) if sha}
 
     async def remote_sha(self) -> str:
         return await asyncio.to_thread(self._remote_sha_of, repo_of(self.model))
